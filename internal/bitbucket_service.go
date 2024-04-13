@@ -37,10 +37,11 @@ func (service *BitbucketService) OnMerge (request *PullRequestMergedPayload) err
 	if strings.HasPrefix(destBranchName, service.ReleaseBranchPrefix) {
 
 		log.Println("--------- Pull Request Merged ---------")
-
+		repoDet := request
 		repoName := request.Repository.Name
-		repoOwner := request.Repository.Owner.Username
+		repoOwner := "TheNickSharma"
 
+		log.Println("Repo Detail: ", repoDet)
 		log.Println("Repository: ", repoName)
 		log.Println("Owner: ", repoOwner)
 		log.Println("Source: ", sourceBranchName)
@@ -67,7 +68,7 @@ func (service *BitbucketService) OnMerge (request *PullRequestMergedPayload) err
 func (service *BitbucketService) TryMerge(dat *PullRequestMergedPayload) error {
 
 	log.Println("--------- Checking AutoMergeable ---------")
-	err := service.DoApproveAndMerge(dat.Repository.Owner.Username, dat.Repository.Name)
+	err := service.DoApproveAndMerge("TheNickSharma", dat.Repository.Name)
 	if err != nil {
 		return err
 	}
@@ -101,11 +102,12 @@ func (service *BitbucketService) GetBranches(repoSlug string, repoOwner string) 
 	var options bitbucket.RepositoryBranchOptions
 	options.RepoSlug = repoSlug
 	options.Owner = repoOwner
-	options.Query = "name ~ " + service.ReleaseBranchPrefix
+	options.Query = "name ~ \"" + service.ReleaseBranchPrefix + "\""
 	options.Pagelen = 100
 
 	branches, err := service.bitbucketClient.Repositories.Repository.ListBranches(&options)
 
+	log.Println(options, err)
 	if err != nil {
 		return nil, err
 	}
@@ -122,13 +124,15 @@ func (service *BitbucketService) PullRequestExists(repoName string, repoOwner st
 	options := bitbucket.PullRequestsOptions{
 		Owner:             repoOwner,
 		RepoSlug:          repoName,
-		Query:             "destination.branch.name = \"" + destination + "\" AND source.branch.name=\"" + source + "\"",
+		States: []string{"OPEN"},
+		Query:             "destination.branch.name = \"" + destination + "\" AND source.branch.name=\"" + source + "\"" +  " AND state = \"OPEN\"",
 	}
 	resp, err := service.bitbucketClient.Repositories.PullRequests.Gets(&options)
 	if err != nil {
 		return false, nil
 	}
 	pullRequests := resp.(map[string]interface{})
+	log.Println(pullRequests)
 	return len(pullRequests["values"].([]interface{})) > 0, nil
 }
 
@@ -159,12 +163,12 @@ func (service *BitbucketService) CreatePullRequest(src string, dest string, repo
 		DestinationBranch: dest,
 		DestinationCommit: "",
 		Message:           "",
-		Reviewers:         []string{reviewer},
+		//Reviewers:         []string{reviewer},
 		States:            nil,
 		Query:             "",
 		Sort:              "",
 	}
-
+	log.Println(options)
 	_, err = service.bitbucketClient.Repositories.PullRequests.Create(&options)
 	return err
 }
@@ -216,6 +220,10 @@ func (service *BitbucketService) ApprovePullRequest(repoOwner string, repoName s
 		return err
 	}
 	log.Println(string(buf))
+	err = service.MergePullRequest(repoOwner, repoName, pullRequestId)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
